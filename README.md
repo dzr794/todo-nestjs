@@ -23,6 +23,12 @@
 
 [Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
 
+## ADD THE .env file whit this content
+
+```
+DATABASE_URL="postgresql://postgres:12eA5@localhost:5432/toDoNestJs?schema=public"
+```
+
 ## Project setup
 
 ```bash
