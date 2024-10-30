@@ -1,6 +1,7 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { AuthDto } from './dto';
+import * as argon2 from 'argon2'
 import * as bcrypt from 'bcrypt'
 import { Tokens } from './types';
 import { JwtService } from '@nestjs/jwt';
@@ -38,18 +39,49 @@ export class AuthService {
     if (!user) 
       throw new ForbiddenException("Acceso denegado")
     
-    const passwordMatches = await bcrypt.compare(dto.password, user.hash)
+    // const passwordMatches = await bcrypt.compare(dto.password, user.hash)
+    const passwordMatches = await argon2.verify(user.hash, dto.password)
     if (!passwordMatches) 
       throw new ForbiddenException("Acceso denegado")
     
     const tokens = await this.getTokens(user.id, user.email);
     await this.updateRtHash(user.id, tokens.refresh_token)
     return tokens
-
-    
   }
-  logout() {}
-  refreshTokens() {}
+
+  async logout(userId: number) {
+    await this.prisma.user.updateMany({
+      where: {
+        id: userId,
+        hashedRt: {
+          not: null,
+        }
+      },
+      data:{
+        hashedRt: null
+      }
+    })
+  }
+  async refreshTokens(userId: number, rt: string) {
+    const user = await this.prisma.user.findUnique({
+      where: {
+        id: userId
+      }
+    })
+    
+    if (!user || !user.hashedRt)
+      throw new ForbiddenException("Acceso denegado")
+
+    // const rtMatches = await bcrypt.compare(rt, user.hashedRt)
+    const rtMatches = await argon2.verify(user.hashedRt, rt)
+    
+    if(!rtMatches)
+      throw new ForbiddenException("Acceso denegado")
+
+    const tokens = await this.getTokens(user.id, user.email);
+    await this.updateRtHash(user.id, tokens.refresh_token)
+    return tokens
+  }
 
   
   async updateRtHash(userId: number, rt: string) {
@@ -65,8 +97,9 @@ export class AuthService {
 
   }
 
-  hashData(data: string){
-    return bcrypt.hash(data, 10);
+  async hashData(data: string){
+    // return await bcrypt.hash(data, 10)
+    return await argon2.hash(data)
   }
 
   async getTokens(userId: number, email:string) {
@@ -78,6 +111,7 @@ export class AuthService {
         secret: 'at-secret',
         expiresIn: 60 * 15,
       }),
+
       this.jwtService.signAsync({
         sub: userId,
         email
